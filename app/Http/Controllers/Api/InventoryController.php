@@ -7,7 +7,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\DispenseStockRequest;
 use App\Http\Requests\ReceiveStockRequest;
 use App\Services\Inventory\InventoryService;
+use App\Services\Clinical\ClinicalDecisionSupportService;
+use App\Models\Item;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * Class InventoryController
@@ -16,10 +19,12 @@ use Illuminate\Http\JsonResponse;
 class InventoryController extends Controller
 {
     private InventoryService $inventoryService;
+    private ClinicalDecisionSupportService $cdsService;
 
-    public function __construct(InventoryService $inventoryService)
+    public function __construct(InventoryService $inventoryService, ClinicalDecisionSupportService $cdsService)
     {
         $this->inventoryService = $inventoryService;
+        $this->cdsService = $cdsService;
     }
 
     /**
@@ -68,6 +73,7 @@ class InventoryController extends Controller
 
     /**
      * Dispense stock from a specific location using FEFO.
+     * Incorporates V2 Clinical Decision Support (Allergy & Drug Interaction checks).
      */
     public function dispense(DispenseStockRequest $request): JsonResponse
     {
@@ -77,6 +83,23 @@ class InventoryController extends Controller
         }
 
         $validated = $request->validated();
+
+        // V2 Feature: Clinical Decision Support
+        $patientId = $request->input('patient_id'); // E.g., passed from the EMR/frontend
+        if ($patientId) {
+            $item = Item::findOrFail($validated['item_id']);
+            $safetyCheck = $this->cdsService->performSafetyCheck($item, $patientId);
+
+            // In a strict mode, we prevent dispensing entirely if not safe.
+            // Or, we require an explicit 'override_reason' parameter to bypass.
+            if (!$safetyCheck['is_safe'] && !$request->has('override_reason')) {
+                return response()->json([
+                    'error'    => 'Clinical Decision Support blocked this dispense due to safety concerns.',
+                    'warnings' => $safetyCheck['warnings'],
+                    'required' => 'override_reason', // Tells the UI to prompt for a pharmacist override password/reason
+                ], 422);
+            }
+        }
 
         try {
             $dispensedLogs = $this->inventoryService->dispenseStock(

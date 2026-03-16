@@ -40,10 +40,19 @@ class CheckExpiringStockJob implements ShouldQueue
             return;
         }
 
-        // In a real system, you would send notifications to users here (e.g. Email, Slack, In-App)
-        // For V1, we log the details for the admin ops team.
         foreach ($expiringBatches as $batch) {
-            Log::warning("EXPIRING STOCK ALERT: Item [{$batch->item->name}] in Location [{$batch->location->name}], Batch Number: {$batch->batch_number} expires on {$batch->expiry_date->toDateString()}. Quantity: {$batch->current_quantity}");
+            $daysUntilExpiry = now()->diffInDays($batch->expiry_date, false);
+
+            // V2 Feature: Smart Auto-Quarantine (30 Days)
+            // If the medication is expiring in less than 30 days, we lock it so it cannot be dispensed to patients.
+            if ($daysUntilExpiry <= 30 && $batch->status === 'available') {
+                $batch->update(['status' => 'quarantined']);
+
+                Log::alert("AUTO-QUARANTINE: Item [{$batch->item->name}] in Location [{$batch->location->name}], Batch: {$batch->batch_number} has been quarantined because it expires in {$daysUntilExpiry} days.");
+            } else {
+                // Otherwise, just send a warning for procurement/pharmacy to monitor (31-90 days)
+                Log::warning("EXPIRING STOCK ALERT: Item [{$batch->item->name}] in Location [{$batch->location->name}], Batch: {$batch->batch_number} expires in {$daysUntilExpiry} days.");
+            }
 
             // Dispatch notification event (e.g., event(new StockExpiringEvent($batch));)
         }
