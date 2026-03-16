@@ -63,41 +63,60 @@ class ClinicalDecisionSupportService
     }
 
     /**
-     * Helper to check interactions against a database/API (like Lexicomp or Medispan).
+     * Check interactions against the dynamic drug_interactions table (V3 CDS).
      */
-    protected function checkInteractions(Item $newItem, array $activeMeds): ?array
+    protected function checkInteractions(Item $newItem, array $activeMedIds): ?array
     {
-        // Mocking a severe interaction scenario for demonstration
-        $severePairs = [
-            ['Warfarin', 'Aspirin'],
-            ['Sildenafil', 'Nitroglycerin']
-        ];
+        if (empty($activeMedIds)) {
+            return null;
+        }
 
-        foreach ($activeMeds as $med) {
-            foreach ($severePairs as $pair) {
-                if (in_array($newItem->generic_name, $pair) && in_array($med, $pair)) {
-                    return [
-                        'drug' => $med,
-                        'severity' => 'HIGH - Contraindicated',
-                    ];
-                }
-            }
+        // Query the database for any matching interactions between the new item and the active meds
+        // We must check both directions since the interaction table pairs A-B or B-A
+        $interaction = \Illuminate\Support\Facades\DB::table('drug_interactions')
+            ->join('items as active_item', function($join) use ($newItem) {
+                $join->on('active_item.id', '=', 'drug_interactions.primary_item_id')
+                     ->where('drug_interactions.secondary_item_id', '=', $newItem->id)
+                     ->orOn('active_item.id', '=', 'drug_interactions.secondary_item_id')
+                     ->where('drug_interactions.primary_item_id', '=', $newItem->id);
+            })
+            ->whereIn('active_item.id', $activeMedIds)
+            ->where('drug_interactions.is_active', true)
+            ->select('active_item.name as interacting_drug', 'drug_interactions.severity', 'drug_interactions.description')
+            // SQLite/PostgreSQL agnostic sorting instead of FIELD()
+            ->orderByRaw("
+                CASE severity
+                    WHEN 'contraindicated' THEN 1
+                    WHEN 'severe' THEN 2
+                    WHEN 'moderate' THEN 3
+                    WHEN 'mild' THEN 4
+                    ELSE 5
+                END
+            ") // Return worst first
+            ->first();
+
+        if ($interaction) {
+            return [
+                'drug'     => $interaction->interacting_drug,
+                'severity' => strtoupper($interaction->severity),
+                'details'  => $interaction->description
+            ];
         }
 
         return null;
     }
 
-    // --- Mock Data Providers for V2 Prototype ---
+    // --- Mock Data Providers (These would normally hit the EMR/Patient microservice via API) ---
 
     protected function mockFetchPatientAllergies(string $patientId): array
     {
-        // Mocking that patient 'PAT-123' is allergic to Penicillin
         return $patientId === 'PAT-123' ? ['Penicillin', 'Amoxicillin'] : [];
     }
 
     protected function mockFetchPatientActiveMeds(string $patientId): array
     {
-        // Mocking that patient 'PAT-456' is currently taking Warfarin
-        return $patientId === 'PAT-456' ? ['Warfarin', 'Lisinopril'] : [];
+        // V3 expects item IDs to compare against the drug_interactions table efficiently
+        // e.g. PAT-456 is currently taking Item ID 1 (Warfarin)
+        return $patientId === 'PAT-456' ? [1, 2] : [];
     }
 }
