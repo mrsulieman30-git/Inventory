@@ -3,15 +3,21 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
+/**
+ * Class User
+ * Modified to support basic Role-Based Access Control (RBAC).
+ *
+ * @package App\Models
+ */
 class User extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    /** @use HasFactory<\Database\Factories\UserFactory> */
+    use HasApiTokens, HasFactory, Notifiable;
 
     /**
      * The attributes that are mass assignable.
@@ -22,6 +28,8 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'role', // 'admin', 'pharmacist', 'lab_tech', 'prescriber', 'nurse'
+        'is_active',
     ];
 
     /**
@@ -44,6 +52,15 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * Helper to check roles.
+     */
+    public function hasRole(string $role): bool
+    {
+        return $this->role === $role;
     }
 }

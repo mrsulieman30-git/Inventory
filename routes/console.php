@@ -1,8 +1,11 @@
 <?php
 
-use Illuminate\Foundation\Inspiring;
-use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
+use App\Jobs\CheckExpiringStockJob;
+use App\Jobs\CheckLowStockJob;
 
-Artisan::command('inspire', function () {
-    $this->comment(Inspiring::quote());
-})->purpose('Display an inspiring quote');
+// Schedule the Low Stock checker to run daily at midnight
+Schedule::job(new CheckLowStockJob)->daily();
+
+// Schedule the Expiring Stock checker to run weekly on Sunday at 2 AM
+Schedule::job(new CheckExpiringStockJob)->weeklyOn(0, '02:00');

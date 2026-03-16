@@ -161,6 +161,13 @@ class InventoryService
                 ];
             }
 
+            // Concurrency safety net: Ensure the entire quantity was actually dispensed after locks were acquired.
+            // If another process depleted the stock between our initial sum check and acquiring the lock,
+            // we must rollback the transaction.
+            if ($remainingQuantityToDispense > 0) {
+                 throw new InsufficientStockException($item->name, $quantity, $quantity - $remainingQuantityToDispense);
+            }
+
             return $dispensedLog;
         });
     }
