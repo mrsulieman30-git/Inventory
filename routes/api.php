@@ -9,6 +9,8 @@ use App\Http\Controllers\Api\PosController;
 use App\Http\Controllers\Api\ClinicalController;
 use App\Http\Controllers\Api\VirtualRackController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\IotWebhookController;
+use App\Http\Controllers\Api\EmarController;
 
 /*
 |--------------------------------------------------------------------------
@@ -23,6 +25,12 @@ use App\Http\Controllers\Api\AuthController;
 
 // Authentication (Public)
 Route::post('/login', [AuthController::class, 'login']);
+
+// V4 IoT Cold Chain Webhooks (Secured via HMAC/Secret Key, not user tokens)
+Route::post('/iot/telemetry', [IotWebhookController::class, 'receiveTemperature']);
+
+// V4 EMR/eMAR Integration (Secured via Integration Token)
+Route::post('/emar/medication-orders', [EmarController::class, 'receiveMedicationOrder']);
 
 // Secure routes protected by Sanctum
 Route::middleware('auth:sanctum')->group(function () {
@@ -39,11 +47,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/dispense', [InventoryController::class, 'dispense']);
     });
 
-    // V2 Analytics Endpoints
+    // V2 / V4 Analytics Endpoints
     Route::prefix('analytics')->group(function () {
         Route::get('/valuation', [AnalyticsController::class, 'valuation']);
         Route::get('/fast-moving', [AnalyticsController::class, 'fastMoving']);
         Route::get('/wastage', [AnalyticsController::class, 'wastage']);
+        Route::get('/predictive-stockouts', [AnalyticsController::class, 'predictiveStockouts']); // V4 Intelligence
     });
 
     // V2 Procurement / Purchase Orders

@@ -19,6 +19,9 @@ class AuditLog extends Model
         'new_values',
         'user_agent',
         'reason',
+        'previous_hash',
+        'hash',
+        'signature',
     ];
 
     protected $casts = [

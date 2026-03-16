@@ -4,16 +4,19 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Analytics\AnalyticsService;
+use App\Services\Analytics\PredictiveAnalyticsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AnalyticsController extends Controller
 {
     private AnalyticsService $analyticsService;
+    private PredictiveAnalyticsService $predictiveService;
 
-    public function __construct(AnalyticsService $analyticsService)
+    public function __construct(AnalyticsService $analyticsService, PredictiveAnalyticsService $predictiveService)
     {
         $this->analyticsService = $analyticsService;
+        $this->predictiveService = $predictiveService;
     }
 
     /**
@@ -21,18 +24,11 @@ class AnalyticsController extends Controller
      */
     public function valuation(Request $request): JsonResponse
     {
-        // Enforce policy (Admins only)
         if ($request->user() && !$request->user()->hasRole('admin')) {
-             return response()->json(['error' => 'Unauthorized. Only admins can view financials.'], 403);
+             return response()->json(['error' => 'Unauthorized.'], 403);
         }
-
-        $locationId = $request->input('location_id');
-        $value = $this->analyticsService->getInventoryValuation($locationId);
-
-        return response()->json([
-            'message' => 'Inventory valuation calculated using WAC.',
-            'total_valuation' => $value,
-        ]);
+        $value = $this->analyticsService->getInventoryValuation($request->input('location_id'));
+        return response()->json(['total_valuation' => $value]);
     }
 
     /**
@@ -40,19 +36,11 @@ class AnalyticsController extends Controller
      */
     public function fastMoving(Request $request): JsonResponse
     {
-        // Enforce policy (Admins and Pharmacists)
-        if ($request->user() && !in_array($request->user()->role, ['admin', 'pharmacist'])) {
-             return response()->json(['error' => 'Unauthorized.'], 403);
-        }
-
-        $days = (int) $request->input('days', 30);
-        $limit = (int) $request->input('limit', 10);
-
-        $items = $this->analyticsService->getFastMovingItems($days, $limit);
-
-        return response()->json([
-            'data' => $items,
-        ]);
+        $items = $this->analyticsService->getFastMovingItems(
+            (int) $request->input('days', 30),
+            (int) $request->input('limit', 10)
+        );
+        return response()->json(['data' => $items]);
     }
 
     /**
@@ -60,15 +48,27 @@ class AnalyticsController extends Controller
      */
     public function wastage(Request $request): JsonResponse
     {
-        if ($request->user() && !$request->user()->hasRole('admin')) {
-             return response()->json(['error' => 'Unauthorized. Only admins can view financials.'], 403);
+        $report = $this->analyticsService->getWastageReport((int) $request->input('days', 30));
+        return response()->json(['data' => $report]);
+    }
+
+    /**
+     * Predict future stockouts based on historical consumption velocity.
+     * V4.0 Intelligence Feature.
+     */
+    public function predictiveStockouts(Request $request): JsonResponse
+    {
+        // Enforce policy (Admins and Procurement)
+        if ($request->user() && !in_array($request->user()->role, ['admin', 'pharmacist'])) {
+             return response()->json(['error' => 'Unauthorized.'], 403);
         }
 
-        $days = (int) $request->input('days', 30);
-        $report = $this->analyticsService->getWastageReport($days);
+        $lookbackDays = (int) $request->input('lookback_days', 30);
+        $predictions = $this->predictiveService->predictDaysOfSupply($lookbackDays);
 
         return response()->json([
-            'data' => $report,
+            'message' => "Stockout predictions based on past {$lookbackDays} days of consumption velocity.",
+            'data'    => $predictions,
         ]);
     }
 }
