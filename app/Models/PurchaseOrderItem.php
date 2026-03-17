@@ -1,0 +1,39 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class PurchaseOrderItem extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'purchase_order_id',
+        'item_id',
+        'ordered_quantity',
+        'received_quantity',
+        'unit_cost',
+        'total_price',
+        'status',
+    ];
+
+    protected $casts = [
+        'ordered_quantity'  => 'integer',
+        'received_quantity' => 'integer',
+        'unit_cost'         => 'decimal:2',
+        'total_price'       => 'decimal:2',
+    ];
+
+    public function purchaseOrder(): BelongsTo
+    {
+        return $this->belongsTo(PurchaseOrder::class);
+    }
+
+    public function item(): BelongsTo
+    {
+        return $this->belongsTo(Item::class);
+    }
+}
